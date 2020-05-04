@@ -31,6 +31,7 @@ ChatLogic::~ChatLogic()
 {
     //// STUDENT CODE
     ////
+    std::cout << "Deallocating ChatLogic at " << this << std::endl;
 
     // delete chatbot instance
     delete _chatBot;
