@@ -17,14 +17,6 @@ ChatLogic::ChatLogic()
     //// STUDENT CODE
     ////
 
-    _nodes = std::make_unique<std::vector<GraphNode*>>();
-
-    // create instance of chatbot
-    _chatBot = new ChatBot("../images/chatbot.png");
-
-    // add pointer to chatlogic so that chatbot answers can be passed on to the GUI
-    _chatBot->SetChatLogicHandle(this);
-
     ////
     //// EOF STUDENT CODE
 }
@@ -33,16 +25,6 @@ ChatLogic::~ChatLogic()
 {
     //// STUDENT CODE
     ////
-    std::cout << "Deallocating ChatLogic at " << this << std::endl;
-
-    // delete chatbot instance
-    delete _chatBot;
-
-    // delete all nodes
-    for (auto it = _nodes->begin(); it != _nodes->end(); ++it)
-    {
-        delete *it;
-    }
 
     ////
     //// EOF STUDENT CODE
@@ -124,16 +106,19 @@ void ChatLogic::LoadAnswerGraphFromFile(std::string filename)
                         ////
 
                         // check if node with this ID exists already
-                        auto newNode = std::find_if(_nodes->begin(), _nodes->end(), [&id](GraphNode *node) { return node->GetID() == id; });
+                        auto newNode = std::find_if(_nodes.begin(),
+                                                    _nodes.end(),
+                                                    [&id](std::unique_ptr<GraphNode> &node) {
+                                                      return node->GetID()==id;
+                                                    });
 
                         // create new element if ID does not yet exist
-                        if (newNode == _nodes->end())
+                        if (newNode == _nodes.end())
                         {
-                            _nodes->emplace_back(new GraphNode(id));
-                            newNode = _nodes->end() - 1; // get iterator to last element
-
-                            // add all answers to current node
-                            AddAllTokensToElement("ANSWER", tokens, **newNode);
+                          _nodes.emplace_back(std::make_unique<GraphNode>(id));
+                          newNode = _nodes.end() - 1; // get iterator to last element
+                          // add all answers to current node
+                          AddAllTokensToElement("ANSWER", tokens, **newNode);
                         }
 
                         ////
@@ -147,20 +132,34 @@ void ChatLogic::LoadAnswerGraphFromFile(std::string filename)
                         ////
 
                         // find tokens for incoming (parent) and outgoing (child) node
-                        auto parentToken = std::find_if(tokens.begin(), tokens.end(), [](const std::pair<std::string, std::string> &pair) { return pair.first == "PARENT"; });
-                        auto childToken = std::find_if(tokens.begin(), tokens.end(), [](const std::pair<std::string, std::string> &pair) { return pair.first == "CHILD"; });
+                        auto parentToken = std::find_if(tokens.begin(),
+                                                        tokens.end(),
+                                                        [](const std::pair<std::string, std::string> &pair) {
+                                                          return pair.first=="PARENT";
+                                                        });
+                        auto childToken = std::find_if(tokens.begin(),
+                                                       tokens.end(),
+                                                       [](const std::pair<std::string, std::string> &pair) {
+                                                         return pair.first=="CHILD";
+                                                       });
 
                         if (parentToken != tokens.end() && childToken != tokens.end())
                         {
-                            // get iterator on incoming and outgoing node via ID search
-                            auto parentNode = std::find_if(_nodes->begin(), _nodes->end(), [&parentToken](GraphNode *node) { return node->GetID() == std::stoi(parentToken->second); });
-                            auto childNode = std::find_if(_nodes->begin(), _nodes->end(), [&childToken](GraphNode *node) { return node->GetID() == std::stoi(childToken->second); });
+                          // get iterator on incoming and outgoing node via ID search
+                          auto parentNode = std::find_if(_nodes.begin(), _nodes.end(),
+                                                         [&parentToken](std::unique_ptr<GraphNode> &node) {
+                                                           return node->GetID() == std::stoi(parentToken->second);
+                                                         });
+                          auto childNode = std::find_if(_nodes.begin(), _nodes.end(),
+                                                        [&childToken](std::unique_ptr<GraphNode> &node) {
+                                                          return node->GetID() == std::stoi(childToken->second);
+                                                        });
 
                             // create new edge
                             // GraphEdge *edge = new GraphEdge(id);
                             std::unique_ptr<GraphEdge> edge = std::make_unique<GraphEdge>(id);
-                            edge->SetChildNode(*childNode);
-                            edge->SetParentNode(*parentNode);
+                            edge->SetChildNode((*childNode).get());
+                            edge->SetParentNode((*parentNode).get());
 
                             // std::shared_ptr<GraphEdge> sharedEdge(edge);
                             _edges.push_back(edge.get());
@@ -198,52 +197,44 @@ void ChatLogic::LoadAnswerGraphFromFile(std::string filename)
 
     // identify root node
     GraphNode *rootNode = nullptr;
-    for (auto it = _nodes->begin(); it != _nodes->end(); ++it)
-    {
-        // search for nodes which have no incoming edges
-        if ((*it)->GetNumberOfParents() == 0)
-        {
-
-            if (rootNode == nullptr)
-            {
-                rootNode = *it; // assign current node to root
-            }
-            else
-            {
-                std::cout << "ERROR : Multiple root nodes detected" << std::endl;
-            }
+    for (auto it = std::begin(_nodes); it!=std::end(_nodes); ++it) {
+      // search for nodes which have no incoming edges
+      if ((*it)->GetNumberOfParents()==0) {
+        if (rootNode==nullptr) {
+          rootNode = (*it).get(); // assign current node to root
+        } else {
+          std::cout << "ERROR : Multiple root nodes detected" << std::endl;
         }
+      }
     }
 
-    // add chatbot to graph root node
-    _chatBot->SetRootNode(rootNode);
-    rootNode->MoveChatbotHere(_chatBot);
+    ChatBot chatBot = ChatBot("../images/chatbot.png");
+    SetChatbotHandle(&chatBot);
+    chatBot.SetChatLogicHandle(this);
+      // add chatbot to graph root node
+    chatBot.SetRootNode(rootNode);
+    rootNode->MoveChatbotHere(std::move(chatBot));
     
     ////
     //// EOF STUDENT CODE
 }
 
-void ChatLogic::SetPanelDialogHandle(ChatBotPanelDialog *panelDialog)
-{
+void ChatLogic::SetPanelDialogHandle(ChatBotPanelDialog *panelDialog) {
     _panelDialog = panelDialog;
 }
 
-void ChatLogic::SetChatbotHandle(ChatBot *chatbot)
-{
+void ChatLogic::SetChatbotHandle(ChatBot *chatbot) {
     _chatBot = chatbot;
 }
 
-void ChatLogic::SendMessageToChatbot(std::string message)
-{
+void ChatLogic::SendMessageToChatbot(std::string message) {
     _chatBot->ReceiveMessageFromUser(message);
 }
 
-void ChatLogic::SendMessageToUser(std::string message)
-{
+void ChatLogic::SendMessageToUser(std::string message) {
     _panelDialog->PrintChatbotResponse(message);
 }
 
-wxBitmap *ChatLogic::GetImageFromChatbot()
-{
+wxBitmap *ChatLogic::GetImageFromChatbot() {
     return _chatBot->GetImageHandle();
 }
